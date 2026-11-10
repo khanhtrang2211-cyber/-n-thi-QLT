@@ -154,32 +154,37 @@ $('#start').onclick=async()=>{
  let p=pool();if(!p.length){tell('Chưa có câu hỏi trong lĩnh vực này.');return}
  if($('#shq').checked)p=shuf(p);
  const n=Math.max(1,Math.min(+$('#cnt').value||p.length,p.length));
- const mins=Math.max(0,+$('#tm').value||0);ex={sub:false,t0:Date.now(),end:mins?Date.now()+mins*60000:0,mins,items:p.slice(0,n).map(q=>{let o=q.opts.map((t,i)=>({t,c:i==q.ans}));if($('#sho').checked)o=shuf(o);return{q,o,sel:null}})};
+ const mins=Math.max(0,+$('#tm').value||0);ex={sub:false,el:0,run:Date.now(),mins,items:p.slice(0,n).map(q=>{let o=q.opts.map((t,i)=>({t,c:i==q.ans}));if($('#sho').checked)o=shuf(o);return{q,o,sel:null}})};
  $('#setup').classList.add('hide');$('#exam').classList.remove('hide');ex.pass=Math.min(Math.max(0,+$('#pass').value||0),ex.items.length);saveEx();renderExam();startTimer();scrollTo(0,0)};
 
 /* ---------- Exam ---------- */
 function ask(msg,ok,no){return new Promise(r=>{const d=$('#cf');$('#cfm').textContent=msg;$('#cfy').textContent=ok||'Đồng ý';$('#cfn').textContent=no||'Huỷ';$('#cfn').style.display=no===null?'none':'';let v=false;$('#cfy').onclick=()=>{v=true;d.close()};$('#cfn').onclick=()=>d.close();d.onclose=()=>r(v);d.showModal()})}
 function tell(m){return ask(m,'Đóng',null)}
-const saveEx=()=>{try{if(ex&&!ex.sub)localStorage.setItem('qexam',JSON.stringify(ex));else localStorage.removeItem('qexam')}catch(e){}};
-function pending(){try{const p=JSON.parse(localStorage.getItem('qexam')||'null');return p&&!p.sub&&p.items?p:null}catch(e){return null}}
+const elapsed=()=>ex?(ex.run?ex.el+(Date.now()-ex.run):ex.el):0;
+const saveEx=()=>{try{if(ex&&!ex.sub){const s={...ex,el:elapsed(),run:null};localStorage.setItem('qexam',JSON.stringify(s));localStorage.setItem('qtm',String(Math.round(s.el)))}else{localStorage.removeItem('qexam');localStorage.removeItem('qtm')}}catch(e){}};
+function pauseT(){if(!ex||ex.sub)return;if(ex.run){ex.el=elapsed();ex.run=null}saveEx()}
+document.addEventListener('visibilitychange',()=>{if(!ex||ex.sub)return;if(document.hidden)pauseT();else if(!ex.run)ex.run=Date.now()});
+addEventListener('pagehide',pauseT);
+function pending(){try{const p=JSON.parse(localStorage.getItem('qexam')||'null');if(!p||p.sub||!p.items)return null;const t=+localStorage.getItem('qtm')||0;if(t>(p.el||0))p.el=t;p.el=p.el||0;p.run=null;return p}catch(e){return null}}
 function chkResume(){const p=pending(),b=$('#resume');if(!p){b.classList.add('hide');return}
- const done=p.items.filter(i=>i.sel!=null).length,over=p.end&&p.end<=Date.now();
+ const done=p.items.filter(i=>i.sel!=null).length,left=p.mins?p.mins*60000-p.el:0;
  b.classList.remove('hide');
- b.innerHTML=`<b>Bạn có bài thi đang làm dở</b><div class="mut">Đã làm ${done}/${p.items.length} câu${p.end?(over?' · đã hết giờ':' · còn '+fmt(p.end-Date.now())):''}</div><div class="row" style="margin-top:8px"><button class="p" id="rsm">Tiếp tục thi</button><button class="d" id="rsd">Bỏ bài này</button></div>`;
+ b.innerHTML=`<b>Bạn có bài thi đang làm dở</b><div class="mut">Đã làm ${done}/${p.items.length} câu${p.mins?(left<=0?' · đã hết giờ':' · còn '+fmt(left)):''}</div><div class="row" style="margin-top:8px"><button class="p" id="rsm">Tiếp tục thi</button><button class="d" id="rsd">Bỏ bài này</button></div>`;
  $('#rsm').onclick=resume;
  $('#rsd').onclick=async()=>{if(await ask('Bỏ bài thi đang làm dở? Không thể khôi phục.','Bỏ bài')){try{localStorage.removeItem('qexam')}catch(e){}chkResume()}}}
-function resume(){const p=pending();if(!p)return;ex=p;$('#setup').classList.add('hide');$('#resume').classList.add('hide');$('#exam').classList.remove('hide');
- if(ex.end&&Date.now()>=ex.end){finish();tell('Đã hết giờ làm bài trong lúc bạn thoát ra. Bài đã được nộp tự động.');return}
+function resume(){const p=pending();if(!p)return;ex=p;ex.run=Date.now();$('#setup').classList.add('hide');$('#resume').classList.add('hide');$('#exam').classList.remove('hide');
+ if(ex.mins&&ex.mins*60000-ex.el<=0){finish();tell('Bài làm đã hết giờ nên được nộp tự động.');return}
  renderExam();startTimer();scrollTo(0,0)}
 function leave(){saveEx();clearInterval(tm);ex=null;$('#exam').classList.add('hide');$('#setup').classList.remove('hide');renderSetup();scrollTo(0,0)}
 let tm=null;
 const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 function startTimer(){clearInterval(tm);tm=setInterval(tick,500)}
 function tick(){const e=$('#tmr');if(!ex||ex.sub||!e)return;
- if(!ex.end){e.textContent='⏱ '+fmt(Date.now()-ex.t0);return}
- const left=ex.end-Date.now();e.textContent='⏳ '+fmt(left);e.style.color=left<300000?'var(--no)':'';
+ const el=elapsed();try{localStorage.setItem('qtm',String(Math.round(el)))}catch(_){}
+ if(!ex.mins){e.textContent='⏱ '+fmt(el);return}
+ const left=ex.mins*60000-el;e.textContent='⏳ '+fmt(left);e.style.color=left<300000?'var(--no)':'';
  if(left<=0){finish();tell('Hết giờ! Bài làm đã được nộp tự động.')}}
-function finish(){if(!ex||ex.sub)return;ex.sub=true;ex.used=Math.min(Date.now(),ex.end||Infinity)-ex.t0;clearInterval(tm);saveEx();
+function finish(){if(!ex||ex.sub)return;ex.sub=true;ex.used=Math.min(elapsed(),ex.mins?ex.mins*60000:Infinity);clearInterval(tm);saveEx();
  [...new Set(ex.items.map(i=>i.q.domain))].forEach(d=>{stats[d]=(stats[d]||0)+1});stats._total=(stats._total||0)+1;saveStats();renderExam();scrollTo(0,0)}
 function renderExam(){
  const done=ex.items.filter(i=>i.sel!=null).length;
@@ -198,13 +203,13 @@ function renderExam(){
  $('#exam').innerHTML=h;
  if(!ex.sub)$('#exam').querySelectorAll('.opt').forEach(e=>e.onclick=()=>{ex.items[e.dataset.k].sel=+e.dataset.j;saveEx();const y=scrollY;renderExam();scrollTo(0,y)});
  const b=(s,f)=>{const e=$(s);if(e)e.onclick=f};
- b('#sub',async()=>{const u=ex.items.length-ex.items.filter(i=>i.sel!=null).length,left=ex.end?ex.end-Date.now():0;
+ b('#sub',async()=>{const u=ex.items.length-ex.items.filter(i=>i.sel!=null).length,left=ex.mins?ex.mins*60000-elapsed():0;
   let msg='';
   if(u&&left>0)msg=`Chưa điền hết các câu hỏi (còn ${u} câu chưa trả lời) và chưa hết giờ làm bài (còn ${fmt(left)}), bạn có chắc chắn muốn nộp bài không?`;
   else if(u)msg=`Chưa điền hết các câu hỏi (còn ${u} câu chưa trả lời), bạn có chắc chắn muốn nộp bài?`;
   else if(left>0)msg=`Chưa hết giờ làm bài (còn ${fmt(left)}), bạn có chắc chắn muốn nộp bài không?`;
   if(msg&&!await ask(msg,'Nộp bài','Làm tiếp'))return;finish()});
- b('#quit',async()=>{if(await ask('Thoát ra màn hình chính? Bài làm được lưu lại và đồng hồ vẫn tiếp tục chạy. Bạn có thể thi tiếp khi quay lại.','Thoát ra','Ở lại'))leave()});
+ b('#quit',async()=>{if(await ask('Thoát ra màn hình chính? Bài làm được lưu lại và đồng hồ tạm dừng và giữ nguyên thời gian còn lại. Bạn có thể thi tiếp khi quay lại.','Thoát ra','Ở lại'))leave()});
  b('#again',reset);tick()}
 function reset(){clearInterval(tm);ex=null;$('#exam').classList.add('hide');$('#setup').classList.remove('hide');renderSetup();scrollTo(0,0)}
 
