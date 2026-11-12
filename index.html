@@ -49,6 +49,22 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .oe input[type=radio]{width:20px;height:20px;flex:none}
 .dm{display:flex;gap:10px;align-items:center;margin:6px 0;padding:10px;border:1px solid var(--bd);border-radius:10px;color:var(--tx);font-size:15px;cursor:pointer}.dm.on{border-color:var(--pri);background:var(--sel)}.dm input{width:20px;height:20px;flex:none}.dm span:first-of-type{flex:1;min-width:0}
 .hide{display:none}
+.ex{display:block}.pn{display:none}
+.pt{font-weight:600;margin-bottom:8px}
+.gr{display:grid;grid-template-columns:repeat(10,1fr);gap:6px}
+.cell{padding:7px 0;font-size:13px;border-radius:8px;background:#fff;color:#1d2330;border:2px solid #e0a100;cursor:pointer}
+.card{transition:box-shadow .3s}.card.fl{box-shadow:0 0 0 3px #e0a100}
+.cell.dn{background:#1f5fd6;color:#fff;border-color:#1f5fd6}
+.cell.ok{background:#12805c;color:#fff;border-color:#12805c}
+.cell.no{background:#c4321f;color:#fff;border-color:#c4321f}
+.lgs{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--mut)}
+.lgs i{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--bd);vertical-align:-1px;margin-right:4px}
+.exq .card{scroll-margin-top:64px}
+@media (min-width:768px){
+ .wrap:has(#exam:not(.hide)){max-width:1180px}
+ .ex{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;align-items:start}
+ .pn{display:block;position:sticky;top:calc(env(safe-area-inset-top,0px) + 60px);background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;max-height:calc(100vh - 80px);overflow:auto}
+}
 </style>
 </head>
 <body>
@@ -160,6 +176,11 @@ $('#start').onclick=async()=>{
 /* ---------- Exam ---------- */
 function ask(msg,ok,no){return new Promise(r=>{const d=$('#cf');$('#cfm').textContent=msg;$('#cfy').textContent=ok||'Đồng ý';$('#cfn').textContent=no||'Huỷ';$('#cfn').style.display=no===null?'none':'';let v=false;$('#cfy').onclick=()=>{v=true;d.close()};$('#cfn').onclick=()=>d.close();d.onclose=()=>r(v);d.showModal()})}
 function tell(m){return ask(m,'Đóng',null)}
+function panel(){
+ const show=ex.sub,dn=ex.items.filter(i=>i.sel!=null).length;let ok=0,no=0;
+ const cells=ex.items.map((it,k)=>{let c='cell';if(it.sel!=null){if(show){if(it.o[it.sel].c){c+=' ok';ok++}else{c+=' no';no++}}else c+=' dn'}return `<button class="${c}" data-g="${k}">${k+1}</button>`}).join('');
+ const lg=show?`<span><i style="background:#fff"></i>Chưa làm ${ex.items.length-ok-no}</span><span><i style="background:#12805c"></i>Đúng ${ok}</span><span><i style="background:#c4321f"></i>Sai ${no}</span>`:`<span><i style="background:#fff;border:2px solid #e0a100"></i>Chưa làm ${ex.items.length-dn}</span><span><i style="background:#1f5fd6"></i>Đã làm ${dn}</span>`;
+ return `<div class="pt">Danh sách ${ex.items.length} câu hỏi</div><div class="gr">${cells}</div><div class="lgs">${lg}</div>`}
 const elapsed=()=>ex?(ex.run?ex.el+(Date.now()-ex.run):ex.el):0;
 const saveEx=()=>{try{if(ex&&!ex.sub){const s={...ex,el:elapsed(),run:null};localStorage.setItem('qexam',JSON.stringify(s));localStorage.setItem('qtm',String(Math.round(s.el)))}else{localStorage.removeItem('qexam');localStorage.removeItem('qtm')}}catch(e){}};
 function pauseT(){if(!ex||ex.sub)return;if(ex.run){ex.el=elapsed();ex.run=null}saveEx()}
@@ -193,14 +214,15 @@ function renderExam(){
   h+=`<div class="card">${ex.pass?(c>=ex.pass?`<div class="score" style="color:var(--ok)">🎉 Chúc mừng bạn đã thi đỗ!</div>`:`<div class="score" style="color:var(--no)">Rất tiếc, bạn chưa đạt</div>`)+`<div class="mut" style="text-align:center">Yêu cầu tối thiểu ${ex.pass}/${n} câu đúng</div>`:''}<div class="score">${c}/${n} câu đúng</div><div class="mut" style="text-align:center">Điểm quy đổi thang 10: ${(c/n*10).toFixed(2)} · Chưa trả lời: ${n-done} · Thời gian: ${fmt(ex.used)}${ex.mins?' / '+ex.mins+':00':''}</div>
   <div class="row" style="justify-content:center;margin-top:10px"><button class="p" id="again">Làm đề mới</button></div></div>`}
  else h+=`<div class="bar"><span>Đã làm <b>${done}/${ex.items.length}</b></span><b id="tmr"></b><span><button class="s d" id="quit">Thoát</button> <button class="p s" id="sub">Nộp bài</button></span></div>`;
+ h+='<div class="ex"><div class="exq">';
  ex.items.forEach((it,k)=>{
-  h+=`<div class="card"><div class="tag">${esc(it.q.domain)}</div><div class="q">Câu ${k+1}. ${esc(it.q.text)}</div>`;
+  h+=`<div class="card" id="q${k}"><div class="tag">${esc(it.q.domain)}</div><div class="q">Câu ${k+1}. ${esc(it.q.text)}</div>`;
   it.o.forEach((o,j)=>{let c='opt';if(ex.sub){if(o.c)c+=' ok';else if(it.sel==j)c+=' no'}else if(it.sel==j)c+=' sel';
    h+=`<div class="${c}" data-k="${k}" data-j="${j}"><b>${L[j]}.</b><span>${esc(o.t)}${ex.sub&&o.c?' ✓':''}${ex.sub&&it.sel==j&&!o.c?' ✗':''}</span></div>`});
   if(ex.sub&&it.sel==null)h+='<div class="mut">Bạn chưa trả lời câu này.</div>';
   if(ex.sub&&it.q.note)h+=`<div class="mut" style="margin-top:8px;white-space:pre-wrap"><b>Căn cứ:</b> ${esc(it.q.note)}</div>`;
   h+='</div>'});
- $('#exam').innerHTML=h;
+ h+='</div><aside class="pn">'+panel()+'</aside></div>';$('#exam').innerHTML=h;
  if(!ex.sub)$('#exam').querySelectorAll('.opt').forEach(e=>e.onclick=()=>{ex.items[e.dataset.k].sel=+e.dataset.j;saveEx();const y=scrollY;renderExam();scrollTo(0,y)});
  const b=(s,f)=>{const e=$(s);if(e)e.onclick=f};
  b('#sub',async()=>{const u=ex.items.length-ex.items.filter(i=>i.sel!=null).length,left=ex.mins?ex.mins*60000-elapsed():0;
@@ -210,7 +232,7 @@ function renderExam(){
   else if(left>0)msg=`Chưa hết giờ làm bài (còn ${fmt(left)}), bạn có chắc chắn muốn nộp bài không?`;
   if(msg&&!await ask(msg,'Nộp bài','Làm tiếp'))return;finish()});
  b('#quit',async()=>{if(await ask('Thoát ra màn hình chính? Bài làm được lưu lại và đồng hồ tạm dừng và giữ nguyên thời gian còn lại. Bạn có thể thi tiếp khi quay lại.','Thoát ra','Ở lại'))leave()});
- b('#again',reset);tick()}
+ b('#again',reset);$('#exam').querySelectorAll('[data-g]').forEach(e=>e.onclick=()=>{const t=document.getElementById('q'+e.dataset.g);if(t){t.scrollIntoView({behavior:'smooth',block:'start'});t.classList.add('fl');setTimeout(()=>t.classList.remove('fl'),1500)}});tick()}
 function reset(){clearInterval(tm);ex=null;$('#exam').classList.add('hide');$('#setup').classList.remove('hide');renderSetup();scrollTo(0,0)}
 
 /* ---------- Bank ---------- */
