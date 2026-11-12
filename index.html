@@ -60,6 +60,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .lgs{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--mut)}
 .lgs i{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--bd);vertical-align:-1px;margin-right:4px}
 .exq .card{scroll-margin-top:64px}
+.dm .an{width:64px;padding:6px;text-align:center}
 @media (min-width:768px){
  .wrap:has(#exam:not(.hide)){max-width:1180px}
  .ex{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;align-items:start}
@@ -77,9 +78,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
  <div id="setup" class="card">
   <label>Lĩnh vực: tick chọn một hoặc nhiều lĩnh vực (chọn tất cả = đề tổng hợp)</label><div class="row"><button class="s" id="dAll">Chọn tất cả (tổng hợp)</button><button class="s" id="dNone">Bỏ chọn hết</button></div><div id="doms"></div>
   <div class="row" style="margin-top:8px;justify-content:space-between"><span class="mut" id="stt"></span><button class="s d" id="stR">Đặt lại bộ đếm</button></div>
-  <label>Số câu hỏi: chọn nhanh bên dưới hoặc tự nhập số câu <span id="avail" class="mut"></span></label>
+  <details style="margin-top:10px"><summary>📈 Lịch sử thi (10 lần gần nhất)</summary><div id="histL"></div></details>
+  <label class="chk" style="margin-top:12px"><input type="checkbox" id="adv">⚙ Nâng cao: chọn số câu theo từng lĩnh vực</label>
+  <div class="hide" id="advTot" style="font-weight:600"></div>
+  <div id="cntBox"><label>Số câu hỏi: chọn nhanh bên dưới hoặc tự nhập số câu <span id="avail" class="mut"></span></label>
   <div class="row" id="presets"></div>
-  <input type="number" id="cnt" min="1" value="30" style="margin-top:8px">
+  <input type="number" id="cnt" min="1" value="30" style="margin-top:8px"></div>
   <label>Thời gian làm bài (phút) — đặt 0 nếu không giới hạn</label>
   <div class="row" id="tp"><button class="s" data-t="15">15</button><button class="s" data-t="30">30</button><button class="s" data-t="45">45</button><button class="s" data-t="60">60</button><button class="s" data-t="90">90</button><button class="s" data-t="0">Không giới hạn</button></div>
   <input type="number" id="tm" min="0" value="30" style="margin-top:8px">
@@ -140,22 +144,36 @@ if(!bank.length){bank=fromBuiltin();try{localStorage.setItem('qver',BV)}catch(e)
 const save=()=>{try{localStorage.setItem('qbank',JSON.stringify(bank))}catch(e){}};
 let stats={};try{stats=JSON.parse(localStorage.getItem('qstats')||'{}')}catch(e){}
 const saveStats=()=>{try{localStorage.setItem('qstats',JSON.stringify(stats))}catch(e){}};
+let hist=[];try{hist=JSON.parse(localStorage.getItem('qhist')||'[]')}catch(e){}
+const saveHist=()=>{try{localStorage.setItem('qhist',JSON.stringify(hist))}catch(e){}};
+const fd=t=>{const x=new Date(t),p=n=>String(n).padStart(2,'0');return p(x.getDate())+'/'+p(x.getMonth()+1)+' '+p(x.getHours())+':'+p(x.getMinutes())};
+function addHist(){const c=ex.items.filter(i=>i.sel!=null&&i.o[i.sel].c).length;hist.push({no:hist.reduce((m,x)=>Math.max(m,x.no||0),0)+1,t:Date.now(),c,n:ex.items.length,p:ex.pass||0});hist=hist.slice(-10);saveHist()}
+function renderHist(){const h=hist.slice(-10).reverse();
+ $('#histL').innerHTML=h.length?h.map(x=>`<div class="item"><div>Lần ${x.no}: <b>${x.c}/${x.n}</b>${x.p?(x.c>=x.p?' <span style="color:var(--ok)">✓ đỗ</span>':' <span style="color:var(--no)">✗ chưa đạt</span>'):''}</div><div class="mut" style="flex:none">${fd(x.t)}</div></div>`).join('')+'<div style="margin-top:8px"><button class="s d" id="hcl">Xoá lịch sử</button></div>':'<div class="mut" style="padding:8px 0">Chưa có lần thi nào.</div>';
+ const b=$('#hcl');if(b)b.onclick=async()=>{if(await ask('Xoá toàn bộ lịch sử thi?','Xoá')){hist=[];saveHist();renderHist()}}}
 const domains=()=>[...new Set(bank.map(q=>q.domain))];
 
 function tab(n){$('#v1').classList.toggle('hide',n!=1);$('#v2').classList.toggle('hide',n!=2);$('#n1').classList.toggle('on',n==1);$('#n2').classList.toggle('on',n==2);if(n==2)renderList();else renderSetup()}
 $('#n1').onclick=()=>tab(1);$('#n2').onclick=()=>tab(2);
 
 /* ---------- Setup ---------- */
-let selD=new Set(),knownD=new Set();
+let selD=new Set(),knownD=new Set(),advN={};
+const rt=(d,i)=>{const cnt=bank.filter(q=>q.domain==d).length;return $('#adv').checked&&selD.has(d)?`<span style="flex:none;display:flex;align-items:center;gap:4px"><input type="number" class="an" data-n="${i}" min="0" max="${cnt}" value="${advN[d]||0}" inputmode="numeric"><span class="mut">/${cnt}</span></span>`:`<span class="mut" style="text-align:right;flex:none;font-size:13px">${cnt} câu<br>đã thi ${stats[d]||0} lần</span>`};
+function advTot(){const t=domains().filter(d=>selD.has(d)).reduce((s,d)=>s+Math.min(Math.max(0,+advN[d]||0),bank.filter(q=>q.domain==d).length),0);$('#advTot').textContent='Tổng: '+t+' câu';return t}
+function advUI(){const a=$('#adv').checked;$('#cntBox').classList.toggle('hide',a);$('#advTot').classList.toggle('hide',!a);if(a)advTot()}
+function pickAdv(){let r=[];const sh=$('#shq').checked;domains().filter(d=>selD.has(d)).forEach(d=>{const k=Math.max(0,+advN[d]||0);if(!k)return;let a=bank.filter(q=>q.domain==d);if(sh)a=shuf(a);r=r.concat(a.slice(0,k))});return r}
 function renderSetup(){
  const ds=domains();
  ds.forEach(d=>{if(!knownD.has(d)){knownD.add(d);selD.add(d)}});
  selD=new Set([...selD].filter(d=>ds.includes(d)));
- $('#doms').innerHTML=ds.map((d,i)=>`<label class="dm ${selD.has(d)?'on':''}"><input type="checkbox" data-i="${i}" ${selD.has(d)?'checked':''}><span>${esc(d)}</span><span class="mut" style="text-align:right;flex:none;font-size:13px">${bank.filter(q=>q.domain==d).length} câu<br>đã thi ${stats[d]||0} lần</span></label>`).join('');
- $('#doms').querySelectorAll('input').forEach(c=>c.onchange=()=>{const d=ds[+c.dataset.i];c.checked?selD.add(d):selD.delete(d);c.parentNode.classList.toggle('on',c.checked);upd()});
+ $('#doms').innerHTML=ds.map((d,i)=>`<label class="dm ${selD.has(d)?'on':''}"><input type="checkbox" data-i="${i}" ${selD.has(d)?'checked':''}><span>${esc(d)}</span>${rt(d,i)}</label>`).join('');
+ $('#doms').querySelectorAll('input').forEach(c=>c.onchange=()=>{const d=ds[+c.dataset.i];c.checked?selD.add(d):selD.delete(d);c.parentNode.classList.toggle('on',c.checked);if($('#adv').checked)renderSetup();else upd()});
  $('#dAll').onclick=()=>{selD=new Set(ds);renderSetup()};
  $('#dNone').onclick=()=>{selD=new Set();renderSetup()};
- $('#stt').textContent='Tổng số đề đã nộp: '+(stats._total||0);chkResume();
+ $('#stt').textContent='Tổng số đề đã nộp: '+(stats._total||0);chkResume();renderHist();
+ $('#adv').onchange=renderSetup;
+ $('#doms').querySelectorAll('.an').forEach(e=>e.oninput=()=>{const d=ds[+e.dataset.n];advN[d]=Math.max(0,Math.min(+e.value||0,+e.max));const t=advTot();if(t){$('#tm').value=t;$('#pass').value=Math.ceil(t*2/3)}});
+ advUI();
  $('#stR').onclick=async()=>{if(await ask('Đặt lại toàn bộ bộ đếm số lần thi về 0?','Đặt lại')){stats={};saveStats();renderSetup()}};
  upd();
 }
@@ -167,9 +185,9 @@ document.querySelectorAll('#tp button').forEach(b=>b.onclick=()=>{$('#tm').value
 $('#cnt').oninput=()=>{$('#pass').value=Math.ceil((+$('#cnt').value||0)*2/3)};
 $('#start').onclick=async()=>{
  if(pending()&&!await ask('Bạn đang có một bài thi làm dở. Bắt đầu đề mới sẽ bỏ bài đó. Bạn có chắc chắn không?','Bắt đầu đề mới','Huỷ'))return;
- let p=pool();if(!p.length){tell('Chưa có câu hỏi trong lĩnh vực này.');return}
+ const A=$('#adv').checked;let p=A?pickAdv():pool();if(!p.length){tell(A?'Hãy nhập số câu cho ít nhất một lĩnh vực đã chọn.':'Chưa có câu hỏi trong lĩnh vực này.');return}
  if($('#shq').checked)p=shuf(p);
- const n=Math.max(1,Math.min(+$('#cnt').value||p.length,p.length));
+ const n=A?p.length:Math.max(1,Math.min(+$('#cnt').value||p.length,p.length));
  const mins=Math.max(0,+$('#tm').value||0);ex={sub:false,el:0,run:Date.now(),mins,items:p.slice(0,n).map(q=>{let o=q.opts.map((t,i)=>({t,c:i==q.ans}));if($('#sho').checked)o=shuf(o);return{q,o,sel:null}})};
  $('#setup').classList.add('hide');$('#exam').classList.remove('hide');ex.pass=Math.min(Math.max(0,+$('#pass').value||0),ex.items.length);saveEx();renderExam();startTimer();scrollTo(0,0)};
 
@@ -206,7 +224,7 @@ function tick(){const e=$('#tmr');if(!ex||ex.sub||!e)return;
  const left=ex.mins*60000-el;e.textContent='⏳ '+fmt(left);e.style.color=left<300000?'var(--no)':'';
  if(left<=0){finish();tell('Hết giờ! Bài làm đã được nộp tự động.')}}
 function finish(){if(!ex||ex.sub)return;ex.sub=true;ex.used=Math.min(elapsed(),ex.mins?ex.mins*60000:Infinity);clearInterval(tm);saveEx();
- [...new Set(ex.items.map(i=>i.q.domain))].forEach(d=>{stats[d]=(stats[d]||0)+1});stats._total=(stats._total||0)+1;saveStats();renderExam();scrollTo(0,0)}
+ [...new Set(ex.items.map(i=>i.q.domain))].forEach(d=>{stats[d]=(stats[d]||0)+1});stats._total=(stats._total||0)+1;saveStats();addHist();renderExam();scrollTo(0,0)}
 function renderExam(){
  const done=ex.items.filter(i=>i.sel!=null).length;
  let h='';
